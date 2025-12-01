@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RAIZ Lab - بخش ادمین</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="app-header">
+      <div class="lab-title">
+        <h1>RAIZ Lab - Admin</h1>
+        <p>بخش مدیریت تجهیزات</p>
+      </div>
+      <button id="logout-btn" class="theme-toggle" type="button" style="display:none;">
+        خروج از حساب
+      </button>
+    </header>
+
+    <main class="app-main">
+      <!-- بخش لاگین -->
+      <section id="login-section" class="intro">
+        <h2>ورود ادمین</h2>
+        <form id="admin-login-form" class="borrow-form" style="border-top:none; padding-top:0;">
+          <div class="form-row">
+            <label>ایمیل ادمین</label>
+            <input type="email" name="email" required placeholder="admin@example.com" />
+          </div>
+          <div class="form-row">
+            <label>رمز عبور</label>
+            <input type="password" name="password" required placeholder="********" />
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary">ورود</button>
+          </div>
+        </form>
+        <p class="helper-text">
+         در صورت وجود مشکل با محمد مهدی خادمی تماس بگیرید.
+        </p>
+      </section>
+
+      <!-- بخش ادمین بعد از ورود -->
+      <section id="admin-section" style="display:none; flex-direction:column; gap:1rem;">
+        <section class="intro">
+          <h2>خلاصه</h2>
+          <p class="helper-text">
+            در این بخش می‌توانید همهٔ تراکنش‌ها و کاربران را مشاهده و به صورت فایل قابل باز شدن در Excel دانلود کنید.
+          </p>
+        </section>
+
+        <section class="log-section">
+          <div class="section-header">
+            <h2>گزارش جابجایی‌ها (همه لاگ‌ها)</h2>
+            <button id="export-logs" class="btn-primary" type="button">
+              دانلود CSV گزارش‌ها
+            </button>
+          </div>
+          <div class="table-wrapper">
+            <table class="log-table">
+              <thead>
+                <tr>
+                  <th>وسیله</th>
+                  <th>نام</th>
+                  <th>شماره دانشجویی</th>
+                  <th>شماره تماس</th>
+                  <th>عملیات</th>
+                  <th>تاریخ و ساعت</th>
+                </tr>
+              </thead>
+              <tbody id="admin-logs-body">
+                <!-- با جاوااسکریپت پر می‌شود -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="log-section">
+          <div class="section-header">
+            <h2>لیست افراد</h2>
+            <button id="export-users" class="btn-primary" type="button">
+              دانلود CSV کاربران
+            </button>
+          </div>
+          <div class="table-wrapper">
+            <table class="log-table">
+              <thead>
+                <tr>
+                  <th>نام</th>
+                  <th>شماره دانشجویی</th>
+                  <th>شماره تماس</th>
+                </tr>
+              </thead>
+              <tbody id="admin-users-body">
+                <!-- با جاوااسکریپت پر می‌شود -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <p>RAIZ Lab Admin Panel</p>
+    </footer>
+  </div>
+
+  <script type="module" src="admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RAIZ Lab - سامانه مدیریت تجهیزات</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="app-header">
+      <div class="lab-title">
+        <h1>RAIZ Lab</h1>
+        <p>Robotics &amp; Artificial Intelligence Laboratory</p>
+        <p class="lab-subtitle">سامانه مدیریت تجهیزات</p>
+      </div>
+      <div style="display:flex; gap:.5rem; align-items:center;">
+        <button id="admin-open" class="theme-toggle" type="button">
+          🔐 بخش ادمین
+        </button>
+        <button id="theme-toggle" class="theme-toggle" type="button">
+          🌙 حالت تاریک
+        </button>
+      </div>
+    </header>
+
+    <main class="app-main">
+      <section class="intro">
+        <h2>راهنما</h2>
+        <ul>
+          <li>برای <strong>برداشتن</strong> یک وسیله، نام، شماره دانشجویی و شماره تماس خود را وارد کنید و گزینه «برداشت» را بزنید.</li>
+          <li>برای <strong>تحویل دادن</strong> وسیله، دوباره نام و شماره دانشجویی خود را وارد کنید و «تحویل» را بزنید.</li>
+          <li>فقط شخصی که وسیله را برداشته می‌تواند آن را تحویل دهد.</li>
+          <li>در صفحه عمومی، برای حفظ حریم خصوصی، شماره دانشجویی نمایش داده نمی‌شود.</li>
+        </ul>
+      </section>
+
+      <section class="equipment-section">
+        <div class="section-header">
+          <h2>فهرست تجهیزات</h2>
+        </div>
+        <div id="equipment-list" class="equipment-list">
+          <!-- کارت‌های تجهیزات با جاوااسکریپت ساخته می‌شوند -->
+        </div>
+      </section>
+
+      <section class="log-section">
+        <div class="section-header">
+          <h2>گزارش جابجایی‌ها</h2>
+          <div class="log-filters">
+            <label for="log-filter">فیلتر بر اساس وسیله:</label>
+            <select id="log-filter">
+              <option value="all">همه وسایل</option>
+              <!-- گزینه‌های وسایل با جاوااسکریپت اضافه می‌شود -->
+            </select>
+          </div>
+        </div>
+        <div class="table-wrapper">
+          <table class="log-table">
+            <thead>
+              <tr>
+                <th>وسیله</th>
+                <th>نام</th>
+                <th>شماره تماس</th>
+                <th>عملیات</th>
+                <th>تاریخ و ساعت</th>
+              </tr>
+            </thead>
+            <tbody id="log-table-body">
+              <!-- ردیف‌های گزارش با جاوااسکریپت ساخته می‌شوند -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <p>
+        RAIZ Robotics &amp; Artificial Intelligence Lab &mdash; ساخته شده برای نظم دادن به تجهیزات 😎
+      </p>
+    </footer>
+  </div>
+
+  <!-- مهم: type="module" برای استفاده از Firebase به صورت مستقیم -->
+  <script type="module" src="script.js"></script>
+</body>
+</html>
