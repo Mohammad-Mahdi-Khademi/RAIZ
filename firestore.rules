@@ -1,0 +1,85 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function member() {
+      return request.auth != null
+        && get(/databases/$(database)/documents/members/$(request.auth.uid)).data.active == true;
+    }
+    function admin() {
+      return member() && get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role == 'admin';
+    }
+    function shortText(value) {
+      return value is string && value.size() > 0 && value.size() <= 200;
+    }
+    function memberData(data) {
+      return data.keys().hasAll(['name', 'login', 'role', 'active'])
+        && data.keys().hasOnly(['name', 'login', 'role', 'active'])
+        && shortText(data.name) && shortText(data.login)
+        && data.role in ['student', 'admin'] && data.active is bool;
+    }
+    match /members/{uid} {
+      allow get: if request.auth != null && (request.auth.uid == uid || admin());
+      allow list: if admin();
+      allow create: if admin() && memberData(request.resource.data);
+      allow update: if admin() && uid != request.auth.uid && memberData(request.resource.data)
+        && request.resource.data.login == resource.data.login
+        && request.resource.data.role == resource.data.role;
+      allow delete: if false;
+    }
+    match /content/{page} {
+      allow read: if page in ['about', 'projects', 'apply', 'contact', 'publications'];
+      allow list: if true;
+      allow write: if admin() && page in ['about', 'projects', 'apply', 'contact', 'publications']
+        && request.resource.data.keys().hasAll(['en', 'fa'])
+        && request.resource.data.keys().hasOnly(['en', 'fa'])
+        && request.resource.data.en is string && request.resource.data.fa is string
+        && request.resource.data.en.size() > 0 && request.resource.data.en.size() <= 12000
+        && request.resource.data.fa.size() > 0 && request.resource.data.fa.size() <= 12000;
+    }
+    match /equipment/{id} {
+      function validOperation() {
+        let data = request.resource.data;
+        let log = getAfter(/databases/$(database)/documents/equipmentLogs/$(data.lastOperation)).data;
+        return data.diff(resource.data).affectedKeys().hasOnly(['holder', 'updatedAt', 'lastOperation'])
+          && data.updatedAt == request.time
+          && data.lastOperation is string
+          && data.lastOperation != resource.data.lastOperation
+          && !exists(/databases/$(database)/documents/equipmentLogs/$(data.lastOperation))
+          && log.equipmentId == id && log.userId == request.auth.uid && log.createdAt == request.time
+          && ((resource.data.holder == null && data.holder == request.auth.uid && log.action == 'borrow')
+            || (resource.data.holder == request.auth.uid && data.holder == null && log.action == 'return'));
+      }
+      allow read: if member();
+      allow create: if admin()
+        && request.resource.data.keys().hasAll(['name', 'location', 'holder', 'updatedAt', 'lastOperation'])
+        && request.resource.data.keys().hasOnly(['name', 'location', 'holder', 'updatedAt', 'lastOperation'])
+        && shortText(request.resource.data.name) && shortText(request.resource.data.location)
+        && request.resource.data.holder == null && request.resource.data.lastOperation == null
+        && request.resource.data.updatedAt == request.time;
+      allow update: if member() && validOperation();
+      allow delete: if false;
+    }
+    match /equipmentLogs/{id} {
+      function validLog() {
+        let data = request.resource.data;
+        let before = get(/databases/$(database)/documents/equipment/$(data.equipmentId)).data;
+        let after = getAfter(/databases/$(database)/documents/equipment/$(data.equipmentId)).data;
+        return data.keys().hasAll(['equipmentId', 'equipment', 'userId', 'student', 'action', 'createdAt'])
+          && data.keys().hasOnly(['equipmentId', 'equipment', 'userId', 'student', 'action', 'createdAt'])
+          && data.userId == request.auth.uid
+          && data.student == get(/databases/$(database)/documents/members/$(request.auth.uid)).data.name
+          && data.equipment == before.name
+          && data.createdAt == request.time && after.updatedAt == request.time
+          && after.lastOperation == id && before.lastOperation != id
+          && ((data.action == 'borrow' && before.holder == null && after.holder == request.auth.uid)
+            || (data.action == 'return' && before.holder == request.auth.uid && after.holder == null));
+      }
+      allow read: if admin();
+      allow create: if member() && validLog();
+      allow update, delete: if false;
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
