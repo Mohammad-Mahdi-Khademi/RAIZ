@@ -1,0 +1,15 @@
+node_modules/
+.wrangler/
+.dev.vars*
+!.dev.vars.example
+dist/
+test-results/
+*.log
+.env
+.env.*
+!.env.example
+*.xlsx
+*.xls
+*.sqlite
+*.sqlite3
+*.db

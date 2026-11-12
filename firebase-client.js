@@ -146,3 +146,10 @@ export async function firebaseRequest(path, data) {
     throw error;
   }
 }
+
+// Exams reuses the current administrator's Firebase identity. The API verifies it.
+export async function firebaseIdToken() {
+  const c = await connect();
+  await requireMember(c, true);
+  return c.auth.currentUser.getIdToken();
+}
