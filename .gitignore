@@ -13,3 +13,7 @@ test-results/
 *.sqlite
 *.sqlite3
 *.db
+
+# Private migration exports must never be committed.
+*private*.json
+*backup*.json

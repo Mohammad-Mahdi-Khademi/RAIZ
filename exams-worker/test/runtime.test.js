@@ -12,7 +12,7 @@ test('Cloudflare workerd + D1: secure login, atomic groups, Excel scoring and sh
   const text=value=>({type:'text',value});
   const mf=new Miniflare({workers:[{config:{name:'test-exams',compatibilityDate:'2026-10-30',
     manifest:{mainModule:'index.js',modules:{'index.js':{type:'esm',contents:bundle.outputFiles[0].text}}},
-    env:{DB:{type:'d1',id:'test-d1'},NATIONAL_ID_PEPPER:text('p'.repeat(64)),PRIVACY_KEY:text('k'.repeat(64)),FIREBASE_PROJECT_ID:text('test-project'),ALLOWED_ORIGINS:text('https://www.raizlab.ir')}
+    env:{DB:{type:'d1',id:'test-d1'},NATIONAL_ID_PEPPER:text('p'.repeat(64)),PRIVACY_KEY:text('k'.repeat(64)),ADMIN_BOOTSTRAP_KEY:text('b'.repeat(64)),ALLOWED_ORIGINS:text('https://www.raizlab.ir')}
   }}]});
   try{
     const db=await mf.getD1Database('DB');
@@ -77,5 +77,21 @@ test('Cloudflare workerd + D1: secure login, atomic groups, Excel scoring and sh
     assert.equal((await portal('operation',{id:'robot',action:'return'},portalSessions[winner])).status,200);
     assert.equal((await portal('logout',{},portalSessions[winner])).status,200);
     assert.equal((await portal('equipment',null,portalSessions[winner])).status,401);
+    const siteSchema=await readFile(new URL('../migrations/0003_site.sql',import.meta.url),'utf8');
+    await db.batch(siteSchema.split(';').map(s=>s.trim()).filter(Boolean).map(s=>db.prepare(s)));
+    async function site(path,body,session){
+      const response=await mf.dispatchFetch(`http://localhost/api/${path}`,{method:body?'POST':'GET',headers:{Origin:'https://www.raizlab.ir',...(body?{'Content-Type':'application/json'}:{}),...(session?{Cookie:session}:{})},...(body?{body:JSON.stringify(body)}:{})});
+      return {status:response.status,body:await response.json(),cookie:response.headers.get('Set-Cookie')?.split(';')[0]};
+    }
+    const setup={token:'b'.repeat(64),login:'admin@example.com',name:'Administrator',secret:'My-new-password-123'};
+    assert.equal((await site('site/bootstrap',setup)).status,201);
+    assert.equal((await site('site/bootstrap',setup)).status,409);
+    const signedIn=await site('site/login',setup);assert.equal(signedIn.status,200,JSON.stringify(signedIn.body));
+    assert.equal((await site('admin/exams',null,signedIn.cookie)).status,200);
+    assert.equal((await site('portal/admin/data',null,signedIn.cookie)).status,200);
+    assert.equal((await site('site/admin/content',{key:'about',en:'About RAIZ',fa:'درباره آزمایشگاه'},signedIn.cookie)).status,200);
+    assert.equal((await site('site/content')).body[0].en,'About RAIZ');
+    assert.equal((await site('site/logout',{},signedIn.cookie)).status,200);
+    assert.equal((await site('admin/exams',null,signedIn.cookie)).status,401);
   }finally{await mf.dispose();}
 });

@@ -1,4 +1,4 @@
-import { firebaseRequest, firebaseIdToken } from './firebase-client.js';
+import { siteRequest, renderSetup, attachSiteAdmin } from './site-client.js';
 import { renderExams } from './exams.js';
 import { portalRequest, attachPortalAdmin } from './portal-client.js';
 const links = { faculty: 'https://mech.iust.ac.ir/faculty/zabihifar/', scholar: 'https://scholar.google.com/citations?user=qqOo3hUAAAAJ&hl=en', linkedin: 'https://www.linkedin.com/in/seyed-hassan-zabihifar-46165b18a/' };
@@ -20,6 +20,8 @@ Object.assign(dictionary.fa, {
 });
 Object.assign(dictionary.en, {exams:'Exams', 'exams-admin':'Exam management', examsDesc:'Group submissions, evaluation and rankings.', 'exams-adminDesc':'Manage group examinations.'});
 Object.assign(dictionary.fa, {exams:'امتحانات', 'exams-admin':'مدیریت امتحانات', examsDesc:'ارسال گروهی، ارزیابی و رتبه‌بندی.', 'exams-adminDesc':'مدیریت امتحانات گروهی.'});
+Object.assign(dictionary.en,{contentImported:'Website content has already been imported. Use the content editor for further changes.',setup:'Administrator setup',bootstrapClosed:'Initial setup is closed or its key has not been configured.',bootstrapDenied:'The setup key is incorrect.',selfDeactivate:'You cannot deactivate your own administrator account.',passwordLength:'Administrator passwords must contain 12–128 characters.'});
+Object.assign(dictionary.fa,{contentImported:'محتوای سایت قبلاً منتقل شده است. برای تغییرات بعدی از ویرایشگر محتوا استفاده کنید.',setup:'راه‌اندازی مدیر',bootstrapClosed:'راه‌اندازی اولیه بسته است یا کلید آن تنظیم نشده است.',bootstrapDenied:'کلید راه‌اندازی صحیح نیست.',selfDeactivate:'نمی‌توانید حساب مدیر خود را غیرفعال کنید.',passwordLength:'رمز مدیر باید بین ۱۲ تا ۱۲۸ نویسه باشد.'});
 let lang = new URLSearchParams(location.search).get('lang') === 'fa' ? 'fa' : 'en';
 let user = null;
 let content = [];
@@ -34,7 +36,7 @@ const route = () => {
  const requested = new URLSearchParams(location.search).get('page');
  const legacy = location.pathname.split('/').filter(Boolean).pop();
  const page = requested || (legacy === 'admin.html' ? 'admin' : legacy);
- return ['about','projects','apply','contact','equipment','admin','exams','exams-admin'].includes(page) ? page : 'home';
+ return ['about','projects','apply','contact','equipment','admin','exams','exams-admin','setup'].includes(page) ? page : 'home';
 };
 const external = (key, label) => `<a href="${esc(links[key])}" target="_blank" rel="noopener noreferrer">${t(label)} ↗</a>`;
 const placeholder = () => `<div class="placeholder">${t('update')}</div>`;
@@ -42,11 +44,11 @@ const block = key => { const row = content.find(item => item.key === key); retur
 async function api(path, data) {
  if (route()==='equipment' && ['session','login','logout','equipment','operation'].includes(path)) return portalRequest(path,data);
  if (path==='admin/data') {
-  const [portal,admins]=await Promise.all([portalRequest('admin/data'),firebaseRequest('admin/accounts')]);
+  const [portal,admins]=await Promise.all([portalRequest('admin/data'),siteRequest('admin/accounts')]);
   return {...portal,users:[...portal.users,...admins]};
  }
  if (path==='admin/equipment' || (path==='admin/users' && data.role==='student')) return portalRequest(path,data);
- return firebaseRequest(path, data);
+ return siteRequest(path, data);
 }
 function blueprint() { return `<div class="blueprint" aria-hidden="true"><div class="blueprint-top"><span>RAIZ / SYSTEMS STUDY</span><span>FIG. 01</span></div><svg viewBox="0 0 440 400" fill="none"><g stroke="#718f90" stroke-width=".6"><ellipse cx="220" cy="306" rx="145" ry="55"/><ellipse cx="220" cy="306" rx="102" ry="38"/><path d="M55 306h333M220 229v146M86 357l268-100M90 256l264 103" stroke-dasharray="4 5"/><circle cx="220" cy="188" r="133" stroke-dasharray="3 9"/><path d="M66 82h310M66 77v10m310-10v10"/></g><g stroke="#d2e789" stroke-width="1.7" stroke-linejoin="round"><path d="M161 303l60-22 65 25-61 25zM161 303v14l64 25 61-23v-13M225 331v11"/><path d="M199 294v-68l35-13 20 10v73l-30 13zM199 226l25 11 30-14M224 237v72"/><ellipse cx="222" cy="215" rx="27" ry="16"/><path d="M201 203l-40-66 26-20 42 69M202 202l24-17 15 12-20 19zM161 137l14 8 27 43M175 145l28-18"/><path d="M167 115l58-61 20 15-59 66M185 131l56-58"/><ellipse cx="175" cy="123" rx="21" ry="17" transform="rotate(-25 175 123)"/><ellipse cx="234" cy="65" rx="15" ry="12" transform="rotate(-25 234 65)"/><path d="M243 59l44 18-7 19-43-19M283 83l22 7-5 20-17-4M300 104l17 20-10 9-13-17M304 92l27 9-2 12-17-5"/><circle cx="221" cy="211" r="7"/><circle cx="176" cy="123" r="6"/><circle cx="234" cy="65" r="4"/></g><g stroke="#9cafab" stroke-width=".6"><path d="M133 123H95v38M256 234h88v-30M258 320h68v32"/><circle cx="133" cy="123" r="3"/><circle cx="256" cy="234" r="3"/></g><g fill="#b6c7c3" font-family="monospace" font-size="8"><text x="76" y="176">MOTION</text><text x="324" y="199">CONTROL</text><text x="310" y="366">LEARNING</text></g></svg><div class="blueprint-bottom"><span><span class="status-dot">●</span> ROBOTICS + INTELLIGENCE</span><span>CONCEPT DRAWING</span></div></div>`; }
 function shell(page) {
@@ -80,6 +82,7 @@ async function admin(version) {
  document.getElementById('main').innerHTML = `${head('admin')}${dashboardBar()}<div class="admin-grid"><form id="member-form" class="form-panel"><h2>${t('addMember')}</h2><label for="role">${t('role')}</label><select id="role" name="role"><option value="student">${t('student')}</option><option value="admin">${t('admin')}</option></select>${field('name','name')}${field('login','studentId','text','dir="ltr" autocomplete="off"')}${field('secret','nationalId','password','dir="ltr" autocomplete="new-password"')}<p class="form-hint" id="member-hint">${t('nationalHint')}</p><button class="button">${t('register')}</button><div class="message" role="status"></div></form><form id="equipment-form" class="form-panel"><h2>${t('addEquipment')}</h2>${field('equipment-name','equipmentName')}${field('location','equipmentLocation')}<button class="button">${t('addEquipment')}</button><div class="message" role="status"></div></form><form id="content-form" class="form-panel wide"><h2>${t('editContent')}</h2><p class="form-hint">${t('contentHelp')}</p><label for="key">${t('page')}</label><select id="key" name="key">${['about','projects','apply','contact','publications'].map(key=>`<option value="${key}">${t(key)}</option>`).join('')}</select><label for="en">${t('english')}</label><textarea id="en" name="en" dir="ltr" lang="en" maxlength="12000" required></textarea><label for="fa">${t('persian')}</label><textarea id="fa" name="fa" dir="rtl" lang="fa" maxlength="12000" required></textarea><button class="button">${t('save')}</button><div class="message" role="status"></div></form><section class="wide"><h2 class="small-title">${t('members')}</h2><div class="record-list">${data.users.map(item=>`<div class="record">${esc(item.name)} · ${t(item.role)}<br><span dir="ltr">${esc(item.login)}</span></div>`).join('')}</div></section><section class="wide"><h2 class="small-title">${t('activity')}</h2>${data.logs.length ? `<div class="table-wrap"><table><thead><tr>${['equipmentName','name','action','date'].map(key=>`<th>${t(key)}</th>`).join('')}</tr></thead><tbody>${data.logs.map(item=>`<tr><td>${esc(item.equipment)}</td><td>${esc(item.student)}</td><td>${t(item.action)}</td><td>${new Intl.DateTimeFormat(lang==='fa'?'fa-IR':'en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Tehran'}).format(new Date(item.created))}</td></tr>`).join('')}</tbody></table></div>` : `<p class="quiet">${t('noActivity')}</p>`}</section></div>`;
  bindLogout();
  attachPortalAdmin(data,{lang,refresh:()=>admin(version),translate:t});
+ attachSiteAdmin(data,{lang,refresh:()=>admin(version),translate:t});
  document.querySelector('.admin-grid').insertAdjacentHTML('beforebegin',`<div class="exam-section"><a class="button" href="${href('exams-admin')}">${t('exams')} ↗</a></div>`);
  document.getElementById('role').addEventListener('change',event=>{
   const isAdmin=event.target.value==='admin';
@@ -111,6 +114,7 @@ async function render() {
  document.getElementById('menu').addEventListener('click',event=>{const opened=document.getElementById('nav').classList.toggle('open');event.target.setAttribute('aria-expanded',String(opened));});
  if(page==='home'){main.innerHTML=home();return;}
  if(['about','projects','apply','contact'].includes(page)){main.innerHTML=publicPage(page);return;}
+ if(page==='setup'){renderSetup(main,{lang,translate:t});return;}
  if(page==='exams'){await renderExams(main,{lang});return;}
  main.innerHTML=`<p class="loading" role="status">${t('loading')}</p>`;
  try{
@@ -118,11 +122,11 @@ async function render() {
  if(!user || (['admin','exams-admin'].includes(page)&&user.role!=='admin')){const loginPage=page==='exams-admin'?'admin':page;main.innerHTML=login(loginPage);bindForm('login-form',async values=>{await api('login',{...values,role:loginPage==='admin'?'admin':'student'});await render();return true;},false);}
  else if(page==='equipment')await equipment(version);
  else if(page==='admin')await admin(version);
- else if(page==='exams-admin')await renderExams(main,{lang,admin:true,getToken:firebaseIdToken});
+ else if(page==='exams-admin')await renderExams(main,{lang,admin:true});
  }catch(error){if(version===renderVersion)main.innerHTML=`${head(page)}<p class="message error" role="alert">${t(error.message)}</p>`;}
 }
 async function boot() {
- contentReady = ['equipment','exams'].includes(route()) ? Promise.resolve() : api('content').then(rows => { content = rows; }).catch(error => { contentFailed = !['backendUnavailable', 'firebaseSetup'].includes(error.message); });
+ contentReady = ['equipment','exams','setup'].includes(route()) ? Promise.resolve() : api('content').then(rows => { content = rows; }).catch(error => { contentFailed = !['backendUnavailable', 'firebaseSetup'].includes(error.message); });
  await render();
  await contentReady;
  if (['home', 'about', 'projects', 'apply', 'contact'].includes(route())) await render();

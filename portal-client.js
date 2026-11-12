@@ -1,15 +1,14 @@
 import { EXAMS_API_URL } from './exams-config.js';
-import { firebaseIdToken, firebaseRequest } from './firebase-client.js';
+import { readSnapshot } from './site-client.js';
 
 export async function portalRequest(path,data,method) {
   const headers={};
-  if(path.startsWith('admin/'))headers.Authorization=`Bearer ${await firebaseIdToken()}`;
   if(data!==undefined)headers['Content-Type']='application/json';
   let response;
   try { response=await fetch(`${EXAMS_API_URL}/api/portal/${path}`,{method:method||(data===undefined?'GET':'POST'),headers,credentials:'include',...(data===undefined?{}:{body:JSON.stringify(data)})}); }
   catch {throw new Error('network');}
   let result;try{result=await response.json();}catch{throw new Error('serverError');}
-  if(!response.ok)throw new Error(result.error||'serverError');
+  if(!response.ok)throw Object.assign(new Error(result.error||'serverError'),{details:result.details});
   return result;
 }
 
@@ -22,13 +21,19 @@ export function attachPortalAdmin(data,{lang,refresh,translate}) {
   const message=section.querySelector('.message'),body=section.querySelector('#portal-admin-body');
   const run=async(button,action)=>{
     button.disabled=true;message.textContent='';message.classList.remove('error');
-    try{await action();}catch(error){message.textContent=translate(error.message);message.classList.add('error');}finally{button.disabled=false;}
+    try{await action();}catch(error){if(error.message==='migrationField' && error.details){
+      const {collection,row,field}=error.details;
+      const collections={members:t('Members','اعضا'),equipment:t('Equipment','تجهیزات'),logs:t('History','سوابق')};
+      const fields={id:t('document ID','شناسه سند'),name:t('name','نام'),login:t('login','شناسه ورود'),role:t('role','نقش'),active:t('active status','وضعیت فعال بودن'),holder:t('holder','دارنده امانت'),location:t('location','محل نگهداری'),equipmentId:t('equipment ID','شناسه تجهیز'),userId:t('member ID','شناسه عضو'),equipment:t('equipment name','نام تجهیز'),student:t('member name','نام عضو'),action:t('action','عملیات'),created:t('date','تاریخ')};
+      message.textContent=t('Import stopped: ','انتقال متوقف شد: ')+(collections[collection]||'')+t(', record ', '، رکورد ')+row+t(' — missing or invalid field: ',' — فیلد نامعتبر یا خالی: ')+(fields[field]||'')+t('. No records were imported.','. هیچ رکوردی منتقل نشد.');
+    }else message.textContent=translate(error.message);message.classList.add('error');}finally{button.disabled=false;}
   };
   if(!data.initialized) {
     document.querySelectorAll('#member-form input,#member-form select,#member-form button,#equipment-form input,#equipment-form button').forEach(e=>e.disabled=true);
-    body.innerHTML=`<p>${t('Preview the existing members, equipment and complete borrowing history before importing. Existing passwords are not copied. Set each student’s credential after import. Firebase data is retained.','پیش از انتقال، اعضا، تجهیزات و تمام سوابق امانت را بررسی کنید. رمزهای قبلی منتقل نمی‌شوند. پس از انتقال، کد ورود هر دانشجو را تنظیم کنید. داده‌های فایربیس حذف نمی‌شوند.')}</p><button type="button" class="button" id="migration-preview">${t('Preview Firebase import','پیش‌نمایش انتقال از فایربیس')}</button><div id="migration-review"></div>`;
+    body.innerHTML=`<p>${t('Preview the existing members, equipment and complete borrowing history before importing. Existing passwords are not copied. Set each student’s credential after import. Firebase data is retained.','پیش از انتقال، اعضا، تجهیزات و تمام سوابق امانت را بررسی کنید. رمزهای قبلی منتقل نمی‌شوند. پس از انتقال، کد ورود هر دانشجو را تنظیم کنید. داده‌های فایربیس حذف نمی‌شوند.')}</p><p><a class="text-link" href="./migration/export.html" target="_blank" rel="noopener">${t('Export existing Firebase data first','ابتدا از داده‌های فایربیس خروجی بگیرید')}</a></p><input id="portal-snapshot" type="file" accept=".json,application/json"><button type="button" class="button" id="migration-preview">${t('Preview Firebase import','پیش‌نمایش انتقال از فایربیس')}</button><div id="migration-review"></div>`;
     body.querySelector('#migration-preview').addEventListener('click',event=>run(event.currentTarget,async()=>{
-      const snapshot=await firebaseRequest('admin/export');
+      const snapshot=await readSnapshot(body.querySelector('#portal-snapshot').files[0]);
+      if(!['members','equipment','logs'].every(key=>Array.isArray(snapshot[key])))throw new Error('invalid');
       const review=body.querySelector('#migration-review');
       review.innerHTML=`<p>${t('Members / Equipment / History records','اعضا / تجهیزات / سوابق')}: ${snapshot.members.length} / ${snapshot.equipment.length} / ${snapshot.logs.length}</p><div class="record-list">${snapshot.members.map(m=>`<div class="record">${escape(m.name)} · <span dir="ltr">${escape(m.login)}</span> · ${escape(m.role)}</div>`).join('')}</div><label class="exam-checkbox"><input type="checkbox" id="migration-frozen"> ${t('I have published the updated Firestore rules to stop equipment changes in the old portal, and reviewed this import.','قوانین جدید فایراستور را برای توقف تغییر تجهیزات در پنل قدیمی منتشر کرده‌ام و اطلاعات انتقال را بررسی کرده‌ام.')}</label><button type="button" class="button" id="migration-confirm" disabled>${t('Confirm import','تأیید انتقال')}</button>`;
       const confirm=review.querySelector('#migration-confirm');

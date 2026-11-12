@@ -20,21 +20,12 @@ service cloud.firestore {
     match /members/{uid} {
       allow get: if request.auth != null && (request.auth.uid == uid || admin());
       allow list: if admin();
-      allow create: if admin() && memberData(request.resource.data);
-      allow update: if admin() && uid != request.auth.uid && memberData(request.resource.data)
-        && request.resource.data.login == resource.data.login
-        && request.resource.data.role == resource.data.role;
-      allow delete: if false;
+      allow write: if false;
     }
     match /content/{page} {
       allow read: if page in ['about', 'projects', 'apply', 'contact', 'publications'];
       allow list: if true;
-      allow write: if admin() && page in ['about', 'projects', 'apply', 'contact', 'publications']
-        && request.resource.data.keys().hasAll(['en', 'fa'])
-        && request.resource.data.keys().hasOnly(['en', 'fa'])
-        && request.resource.data.en is string && request.resource.data.fa is string
-        && request.resource.data.en.size() > 0 && request.resource.data.en.size() <= 12000
-        && request.resource.data.fa.size() > 0 && request.resource.data.fa.size() <= 12000;
+      allow write: if false;
     }
     // Legacy equipment is read-only after the Cloudflare cutover.
     // Admin reads remain available for the one-time reviewed migration.

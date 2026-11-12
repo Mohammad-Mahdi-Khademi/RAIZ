@@ -1,9 +1,7 @@
-import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { reject } from './core.js';
 const encoder=new TextEncoder();
 const hex=bytes=>Array.from(new Uint8Array(bytes),b=>b.toString(16).padStart(2,'0')).join('');
 const unhex=s=>Uint8Array.from(s.match(/../g)||[],x=>parseInt(x,16));
-const keys=createRemoteJWKSet(new URL('https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com'));
 export const randomToken=()=>hex(crypto.getRandomValues(new Uint8Array(32)));
 export const sha256=async value=>hex(await crypto.subtle.digest('SHA-256',typeof value==='string'?encoder.encode(value):value));
 export async function keyed(secret,value) {
@@ -25,19 +23,15 @@ export async function verifyCredential(id,pepper,stored) {
   const a=encoder.encode(candidate), b=encoder.encode(stored);
   let diff=a.length^b.length; for(let i=0;i<a.length;i++) diff|=a[i]^(b[i]||0); return diff===0;
 }
+export const adminCookie=(token,age=28800)=>`__Host-raiz-admin=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${age}`;
+export const adminToken=request=>(request.headers.get('Cookie')||'').split(';').map(s=>s.trim()).find(s=>s.startsWith('__Host-raiz-admin='))?.slice(18)||'';
 export async function adminIdentity(request,env) {
-  const token=(request.headers.get('Authorization')||'').match(/^Bearer (.+)$/)?.[1];
-  if(!token) reject(401,'adminRequired');
-  let payload;
-  try { ({payload}=await jwtVerify(token,keys,{algorithms:['RS256'],issuer:`https://securetoken.google.com/${env.FIREBASE_PROJECT_ID}`,audience:env.FIREBASE_PROJECT_ID})); }
-  catch { reject(401,'adminRequired'); }
-  if(!payload.sub || payload.sub.length>128 || !payload.auth_time || payload.auth_time>Date.now()/1000) reject(401,'adminRequired');
-  // Firebase ID tokens invoke Firestore's existing security rules, not IAM bypass.
-  const response=await fetch(`https://firestore.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/databases/(default)/documents/members/${encodeURIComponent(payload.sub)}`,{headers:{Authorization:`Bearer ${token}`}});
-  if(!response.ok) reject(response.status>=500?503:403,'adminRequired');
-  const doc=await response.json();
-  if(doc.fields?.active?.booleanValue!==true || doc.fields?.role?.stringValue!=='admin') reject(403,'adminRequired');
-  return payload.sub;
+  const token=adminToken(request);
+  if(!/^[a-f0-9]{64}$/.test(token))reject(401,'adminRequired');
+  const row=await env.DB.prepare(`SELECT a.id FROM admin_sessions s JOIN site_admins a ON a.id=s.admin_id
+    WHERE s.token_hash=? AND s.expires_at>? AND a.active=1`).bind(await sha256(token),Math.floor(Date.now()/1000)).first();
+  if(!row)reject(401,'adminRequired');
+  return row.id;
 }
 export async function limit(db,key,maximum,seconds) {
   const now=Math.floor(Date.now()/1000);

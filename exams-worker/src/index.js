@@ -2,6 +2,7 @@ import { ApiError, reject, text, digits, studentNumber, groupKey, evaluate, exam
 import { adminIdentity, credential, verifyCredential, keyed, sha256, randomToken, limit, cookie, sessionToken } from './security.js';
 import { readUpload } from './excel.js';
 import { portalRoute } from './portal.js';
+import { siteRoute } from './site.js';
 
 const now=()=>new Date().toISOString();
 const seconds=()=>Math.floor(Date.now()/1000);
@@ -75,6 +76,7 @@ async function route(request,env) {
   const db=env.DB, url=new URL(request.url), path=url.pathname.replace(/\/$/,'');
   const method=request.method;
   if(!env.NATIONAL_ID_PEPPER || !env.PRIVACY_KEY)reject(503,'setup');
+  if(path.startsWith('/api/site/'))return siteRoute(request,env,json);
   if(path.startsWith('/api/portal/'))return portalRoute(request,env,json);
   if(path==='/api/exams'&&method==='GET') {
     return respond({exams:(await all(db,'SELECT id,name,description,deadline,min_size,max_size,allow_replace,active,created_at FROM exams WHERE active=1 ORDER BY created_at DESC')).map(publicExam)});
@@ -256,6 +258,6 @@ export default {
     const result=new Response(response.body,response);for(const [key,value]of Object.entries(headers))result.headers.set(key,value);return result;
   },
   async scheduled(_event,env) {
-    await env.DB.batch([statement(env.DB,'DELETE FROM portal_sessions WHERE expires_at<=?',seconds()),statement(env.DB,'DELETE FROM sessions WHERE expires_at<=?',seconds()),statement(env.DB,'DELETE FROM imports WHERE expires_at<=?',seconds()),statement(env.DB,'DELETE FROM rate_limits WHERE expires_at<=?',seconds())]);
+    await env.DB.batch([statement(env.DB,'DELETE FROM admin_sessions WHERE expires_at<=?',seconds()),statement(env.DB,'DELETE FROM portal_sessions WHERE expires_at<=?',seconds()),statement(env.DB,'DELETE FROM sessions WHERE expires_at<=?',seconds()),statement(env.DB,'DELETE FROM imports WHERE expires_at<=?',seconds()),statement(env.DB,'DELETE FROM rate_limits WHERE expires_at<=?',seconds())]);
   }
 };

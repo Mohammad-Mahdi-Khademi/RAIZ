@@ -42,7 +42,7 @@ const messages={
   serverError:['The operation failed. Please retry.','عملیات انجام نشد. دوباره تلاش کنید.']
 };
 
-export async function renderExams(root,{lang='fa',admin=false,getToken}={}) {
+export async function renderExams(root,{lang='fa',admin=false}={}) {
   const q=(en,fa)=>lang==='fa'?fa:en;
   const errorText=code=>messages[code]?.[lang==='fa'?1:0]||q('Unable to complete the request.','انجام درخواست ممکن نشد.');
   const query=new URLSearchParams(location.search), examId=query.get('exam');
@@ -56,14 +56,14 @@ export async function renderExams(root,{lang='fa',admin=false,getToken}={}) {
   const table=(heads,rows)=>`<div class="table-wrap"><table><thead><tr>${heads.map(h=>`<th scope="col">${h}</th>`).join('')}</tr></thead><tbody>${rows.length?rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join(''):`<tr><td colspan="${heads.length}">${q('No records yet.','هنوز رکوردی وجود ندارد.')}</td></tr>`}</tbody></table></div>`;
   const board=rows=>`<section class="exam-section"><h2>${q('Group leaderboard','رتبه‌بندی گروه‌ها')}</h2><p class="quiet">${q('Equal scores share a rank. Only the latest submission counts.','امتیازهای برابر رتبه یکسان دارند. فقط آخرین ارسال محاسبه می‌شود.')}</p>${table([q('Rank','رتبه'),q('Group','گروه'),q('Accuracy','دقت'),q('Correct / total','صحیح / کل')],rows.map(r=>[r.rank,escape(r.group_name),score(r.score),`<bdi dir="ltr">${r.correct} / ${r.total}</bdi>`]))}</section>`;
   async function api(path,{method='GET',body}={}) {
-    const headers={};if(admin)headers.Authorization=`Bearer ${await getToken()}`;
+    const headers={};
     if(body && !(body instanceof FormData)){headers['Content-Type']='application/json';body=JSON.stringify(body);}
     let response;try{response=await fetch(`${EXAMS_API_URL}/api${path}`,{method,body,headers,credentials:'include'});}catch{throw Object.assign(new Error('network'),{code:'network'});}
     let data;try{data=await response.json();}catch{data={error:'serverError'};}
     if(!response.ok)throw Object.assign(new Error(data.error),{code:data.error,details:data.details});return data;
   }
   const base=`${admin?'/admin':''}/exams${examId?`/${examId}`:''}`;
-  const rerender=()=>root.isConnected?renderExams(root,{lang,admin,getToken}):Promise.resolve();
+  const rerender=()=>root.isConnected?renderExams(root,{lang,admin}):Promise.resolve();
   function bind(formId,action) {
     root.querySelector(`#${formId}`)?.addEventListener('submit',async event=>{
       event.preventDefault();const form=event.currentTarget, status=form.querySelector('.message'),buttons=form.querySelectorAll('button');

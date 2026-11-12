@@ -26,27 +26,36 @@ async function identity(request,db) {
   if(!m)reject(401,'loginRequired');return {...m,session_hash:hash};
 }
 const sessionGuard=(db,m)=>assertion(db,`EXISTS(SELECT 1 FROM portal_members m JOIN portal_sessions s ON s.member_id=m.id WHERE m.id=? AND m.version=? AND m.active=1 AND s.token_hash=? AND s.expires_at>?)`,m.id,m.version,m.session_hash,seconds());
-const identifier=value=>{if(typeof value!=='string'||!/^[-a-zA-Z0-9_]{1,128}$/.test(value))reject(400,'invalid');return value;};
+const identifier=value=>{if(typeof value!=='string'||!value.trim()||new TextEncoder().encode(value).length>1500||/[\/\u0000-\u001f\u007f]/.test(value)||['.','..'].includes(value))reject(400,'invalid');return value;};
 const timestamp=value=>{if(typeof value!=='string'||!Number.isFinite(Date.parse(value)))reject(400,'invalid');return new Date(value).toISOString();};
 
 // Import a reviewed administrator snapshot once. No Firebase credentials or hashes are accepted.
 export function migrationSnapshot(body) {
   const {members,equipment,logs}=body;
   if(![members,equipment,logs].every(Array.isArray)||members.length>2000||equipment.length>2000||logs.length>10000)reject(400,'migrationSize');
-  const users=members.map(m=>{
-    if(!['student','admin'].includes(m.role)||typeof m.active!=='boolean')reject(400,'invalid');
-    return {id:identifier(m.id),name:text(m.name),login:m.role==='student'?studentNumber(m.login):text(m.login),role:m.role,active:Number(m.active)};
+  // Include only a collection, row number and field name in validation errors.
+  // Never return source values or credentials in error responses.
+  const field=(collection,row,record,key,validate)=>{
+    try{return validate(record?.[key]);}
+    catch{reject(400,'migrationField',{collection,row:row+1,field:key});}
+  };
+  const choice=choices=>value=>{if(!choices.includes(value))reject(400,'invalid');return value;};
+  const users=members.map((m,i)=>{
+    const get=(key,validate)=>field('members',i,m,key,validate);
+    const role=get('role',choice(['student','admin']));
+    return {id:get('id',identifier),name:get('name',text),login:get('login',role==='student'?studentNumber:text),role,active:Number(get('active',choice([true,false])))};
   });
   if(new Set(users.map(m=>m.id)).size!==users.length||new Set(users.map(m=>m.login)).size!==users.length)reject(400,'duplicate');
   const ids=new Set(users.map(m=>m.id));
-  const items=equipment.map(e=>{
-    const holder=e.holder===null?null:identifier(e.holder);
+  const items=equipment.map((e,i)=>{
+    const get=(key,validate)=>field('equipment',i,e,key,validate);
+    const holder=get('holder',value=>value===null?null:identifier(value));
     if(holder&&!ids.has(holder))reject(400,'migrationHolder');
-    return {id:identifier(e.id),name:text(e.name),location:text(e.location),holder};
+    return {id:get('id',identifier),name:get('name',text),location:get('location',text),holder};
   });
-  const events=logs.map(l=>{
-    if(!['borrow','return'].includes(l.action))reject(400,'invalid');
-    return {id:identifier(l.id),equipment_id:identifier(l.equipmentId),user_id:identifier(l.userId),equipment:text(l.equipment),student:text(l.student),action:l.action,created_at:timestamp(l.created)};
+  const events=logs.map((l,i)=>{
+    const get=(key,validate)=>field('logs',i,l,key,validate);
+    return {id:get('id',identifier),equipment_id:get('equipmentId',identifier),user_id:get('userId',identifier),equipment:get('equipment',text),student:get('student',text),action:get('action',choice(['borrow','return'])),created_at:get('created',timestamp)};
   });
   if(new Set(items.map(e=>e.id)).size!==items.length||new Set(events.map(e=>e.id)).size!==events.length)reject(400,'duplicate');
   return {users,items,events};

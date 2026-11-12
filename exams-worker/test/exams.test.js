@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import * as XLSX from 'xlsx';
-import { generateKeyPair, exportJWK, SignJWT } from 'jose';
 import worker from '../src/index.js';
 import { evaluate, nationalId, groupKey } from '../src/core.js';
 import { credential, sha256, verifyCredential, cookie, sessionToken } from '../src/security.js';
@@ -21,6 +20,8 @@ const resultRows=[['row','result'],...Array.from({length:10},(_,i)=>[i+1,i%3])];
 const predictionRows=resultRows.map((r,i)=>i===2||i===5||i===7?[r[0],9]:[...r]);
 function sqliteD1() {
   const sqlite=new DatabaseSync(':memory:');sqlite.exec(readFileSync(new URL('../migrations/0001_exams.sql',import.meta.url),'utf8'));
+  sqlite.exec(readFileSync(new URL('../migrations/0002_portal.sql',import.meta.url),'utf8'));
+  sqlite.exec(readFileSync(new URL('../migrations/0003_site.sql',import.meta.url),'utf8'));
   function prepare(sql,args=[]) {
     return {bind(...values){return prepare(sql,values);}, execute(){return sqlite.prepare(sql).all(...args);},
       async first(){return this.execute()[0]||null;},async all(){return {results:this.execute()};},async run(){this.execute();return {success:true};}};
@@ -68,26 +69,22 @@ test('Excel validation rejects bad types, duplicate IDs, headers, formulas and i
 
 test('API lifecycle, authorization, privacy and transactional integrity',async t=>{
   const DB=sqliteD1(), env={DB,NATIONAL_ID_PEPPER:'p'.repeat(64),PRIVACY_KEY:'k'.repeat(64),ALLOWED_ORIGINS:origin,FIREBASE_PROJECT_ID:'test-raiz'};
-  const {publicKey,privateKey}=await generateKeyPair('RS256',{extractable:true});
-  const jwk=await exportJWK(publicKey);jwk.kid='test-key';jwk.alg='RS256';
-  const token=await new SignJWT({auth_time:Math.floor(Date.now()/1000)}).setProtectedHeader({alg:'RS256',kid:'test-key'}).setIssuer('https://securetoken.google.com/test-raiz').setAudience('test-raiz').setSubject('admin-uid').setIssuedAt().setExpirationTime('1h').sign(privateKey);
-  const originalFetch=globalThis.fetch;let adminActive=true;
-  globalThis.fetch=async(url)=>{
-    if(String(url).includes('googleapis.com/service_accounts'))return Response.json({keys:[jwk]});
-    if(String(url).includes('firestore.googleapis.com'))return Response.json({fields:{active:{booleanValue:adminActive},role:{stringValue:'admin'}}});
-    throw new Error('Unexpected external request');
-  };
+  const token='a'.repeat(64);
+  DB.sqlite.prepare("INSERT INTO site_admins(id,name,email,credential,created_at) VALUES('admin-uid','Admin','admin@example.com','unused','now')").run();
+  DB.sqlite.prepare('INSERT INTO admin_sessions VALUES(?,?,?)').run(await sha256(token),'admin-uid',Math.floor(Date.now()/1000)+3600);
+  const originalFetch=globalThis.fetch;let googleRequests=0;
+  globalThis.fetch=async()=>{googleRequests++;throw new Error('No Google calls permitted');};
   t.after(()=>{globalThis.fetch=originalFetch;DB.sqlite.close();});
   async function call(path,{method='GET',body,admin=false,session,requestOrigin=origin}={}) {
-    const headers={};if(requestOrigin)headers.Origin=requestOrigin;if(admin)headers.Authorization=`Bearer ${token}`;if(session)headers.Cookie=session;
+    const headers={};if(requestOrigin)headers.Origin=requestOrigin;if(admin)headers.Cookie=`__Host-raiz-admin=${token}`;if(session)headers.Cookie=session;
     if(body&&!(body instanceof FormData)){headers['Content-Type']='application/json';body=JSON.stringify(body);}
     const response=await worker.fetch(new Request(`https://exams-api.raizlab.ir/api${path}`,{method,body,headers}),env);
     return {status:response.status,body:await response.json(),cookie:response.headers.get('Set-Cookie')?.split(';')[0]};
   }
   let examId,leaderCookie,memberCookie;
-  await t.test('admin endpoints require verified active Firebase administrator',async()=>{
+  await t.test('admin endpoints require verified active Cloudflare administrator',async()=>{
     assert.equal((await call('/admin/exams')).status,401);
-    adminActive=false;assert.equal((await call('/admin/exams',{admin:true})).status,403);adminActive=true;
+    DB.sqlite.exec("UPDATE site_admins SET active=0");assert.equal((await call('/admin/exams',{admin:true})).status,401);DB.sqlite.exec("UPDATE site_admins SET active=1");
     const created=await call('/admin/exams',{method:'POST',admin:true,body:{name:'Test exam',description:'Example',min_size:2,max_size:3,allow_replace:true}});
     assert.equal(created.status,201,JSON.stringify(created.body));examId=created.body.id;
     assert.equal((await call('/exams')).body.exams.length,0);
