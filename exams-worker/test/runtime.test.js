@@ -51,5 +51,31 @@ test('Cloudflare workerd + D1: secure login, atomic groups, Excel scoring and sh
     const result=await request('',{session:sessions[0]});assert.deepEqual(result.body.leaderboard.map(r=>r.rank),[1,1]);
     assert.equal(result.body.group.rank,1);assert.ok(!JSON.stringify(result.body).includes('student_number'));
     assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM transaction_assertions').first()).n,0);
+    // Exercise the new portal in actual workerd/D1, including WebCrypto and competing loans.
+    const portalSchema=await readFile(new URL('../migrations/0002_portal.sql',import.meta.url),'utf8');
+    await db.batch(portalSchema.split(';').map(s=>s.trim()).filter(Boolean).map(s=>db.prepare(s)));
+    const portalHash=await credential('portal:0013540874','p'.repeat(64));
+    await db.batch([
+      db.prepare('INSERT INTO portal_state VALUES(1,?)').bind(timestamp),
+      ...['12345','12346'].map((number,i)=>db.prepare("INSERT INTO portal_members(id,name,login,role,active,credential,created_at) VALUES(?,?,?,'student',1,?,?)").bind(`p${i}`,`Member ${i}`,number,portalHash,timestamp)),
+      db.prepare("INSERT INTO portal_equipment(id,name,location,updated_at) VALUES('robot','Robot','Lab',?)").bind(timestamp)
+    ]);
+    async function portal(path,body,session){
+      const response=await mf.dispatchFetch(`http://localhost/api/portal/${path}`,{method:body?'POST':'GET',headers:{Origin:'https://www.raizlab.ir',...(body?{'Content-Type':'application/json'}:{}),...(session?{Cookie:session}:{})},...(body?{body:JSON.stringify(body)}:{})});
+      return {status:response.status,body:await response.json(),cookie:response.headers.get('Set-Cookie')?.split(';')[0]};
+    }
+    const portalSessions=[];
+    for(const number of ['12345','12346']){
+      const login=await portal('login',{login:number,secret:'0013540874'});assert.equal(login.status,200,JSON.stringify(login.body));portalSessions.push(login.cookie);
+    }
+    const loans=await Promise.all(portalSessions.map(session=>portal('operation',{id:'robot',action:'borrow'},session)));
+    assert.deepEqual(loans.map(r=>r.status).sort(),[200,409]);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM portal_logs').first()).n,1);
+    const winner=loans.findIndex(r=>r.status===200),loser=1-winner;
+    assert.equal((await portal('operation',{id:'robot',action:'return'},portalSessions[loser])).status,409);
+    assert.equal((await portal('equipment',null,portalSessions[winner])).body[0].mine,true);
+    assert.equal((await portal('operation',{id:'robot',action:'return'},portalSessions[winner])).status,200);
+    assert.equal((await portal('logout',{},portalSessions[winner])).status,200);
+    assert.equal((await portal('equipment',null,portalSessions[winner])).status,401);
   }finally{await mf.dispose();}
 });

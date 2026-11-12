@@ -1,6 +1,7 @@
 import { ApiError, reject, text, digits, studentNumber, groupKey, evaluate, examSettings } from './core.js';
 import { adminIdentity, credential, verifyCredential, keyed, sha256, randomToken, limit, cookie, sessionToken } from './security.js';
 import { readUpload } from './excel.js';
+import { portalRoute } from './portal.js';
 
 const now=()=>new Date().toISOString();
 const seconds=()=>Math.floor(Date.now()/1000);
@@ -10,11 +11,11 @@ const one=(db,sql,...args)=>statement(db,sql,...args).first();
 const all=async(db,sql,...args)=>(await statement(db,sql,...args).all()).results;
 const publicExam=e=>({id:e.id,name:e.name,description:e.description,active:!!e.active,deadline:e.deadline,min_size:e.min_size,max_size:e.max_size,allow_replace:!!e.allow_replace,created_at:e.created_at});
 const respond=(value,status=200,headers={})=>Response.json(value,{status,headers});
-async function json(request) {
+async function json(request,maximum=16384) {
   if(!request.headers.get('Content-Type')?.startsWith('application/json')) reject(415,'invalid');
   const reader=request.body?.getReader(); if(!reader) reject(400,'invalid');
   let size=0;const chunks=[];
-  while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>16384){await reader.cancel();reject(413,'invalid');}chunks.push(value);}
+  while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>maximum){await reader.cancel();reject(413,'invalid');}chunks.push(value);}
   const bytes=new Uint8Array(size);let offset=0;for(const c of chunks){bytes.set(c,offset);offset+=c.length;}
   try{const value=JSON.parse(new TextDecoder().decode(bytes));if(!value || Array.isArray(value)||typeof value!=='object')reject(400,'invalid');return value;}catch{reject(400,'invalid');}
 }
@@ -74,6 +75,7 @@ async function route(request,env) {
   const db=env.DB, url=new URL(request.url), path=url.pathname.replace(/\/$/,'');
   const method=request.method;
   if(!env.NATIONAL_ID_PEPPER || !env.PRIVACY_KEY)reject(503,'setup');
+  if(path.startsWith('/api/portal/'))return portalRoute(request,env,json);
   if(path==='/api/exams'&&method==='GET') {
     return respond({exams:(await all(db,'SELECT id,name,description,deadline,min_size,max_size,allow_replace,active,created_at FROM exams WHERE active=1 ORDER BY created_at DESC')).map(publicExam)});
   }
@@ -254,6 +256,6 @@ export default {
     const result=new Response(response.body,response);for(const [key,value]of Object.entries(headers))result.headers.set(key,value);return result;
   },
   async scheduled(_event,env) {
-    await env.DB.batch([statement(env.DB,'DELETE FROM sessions WHERE expires_at<=?',seconds()),statement(env.DB,'DELETE FROM imports WHERE expires_at<=?',seconds()),statement(env.DB,'DELETE FROM rate_limits WHERE expires_at<=?',seconds())]);
+    await env.DB.batch([statement(env.DB,'DELETE FROM portal_sessions WHERE expires_at<=?',seconds()),statement(env.DB,'DELETE FROM sessions WHERE expires_at<=?',seconds()),statement(env.DB,'DELETE FROM imports WHERE expires_at<=?',seconds()),statement(env.DB,'DELETE FROM rate_limits WHERE expires_at<=?',seconds())]);
   }
 };

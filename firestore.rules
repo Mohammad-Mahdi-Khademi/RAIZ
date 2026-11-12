@@ -36,47 +36,15 @@ service cloud.firestore {
         && request.resource.data.en.size() > 0 && request.resource.data.en.size() <= 12000
         && request.resource.data.fa.size() > 0 && request.resource.data.fa.size() <= 12000;
     }
+    // Legacy equipment is read-only after the Cloudflare cutover.
+    // Admin reads remain available for the one-time reviewed migration.
     match /equipment/{id} {
-      function validOperation() {
-        let data = request.resource.data;
-        let log = getAfter(/databases/$(database)/documents/equipmentLogs/$(data.lastOperation)).data;
-        return data.diff(resource.data).affectedKeys().hasOnly(['holder', 'updatedAt', 'lastOperation'])
-          && data.updatedAt == request.time
-          && data.lastOperation is string
-          && data.lastOperation != resource.data.lastOperation
-          && !exists(/databases/$(database)/documents/equipmentLogs/$(data.lastOperation))
-          && log.equipmentId == id && log.userId == request.auth.uid && log.createdAt == request.time
-          && ((resource.data.holder == null && data.holder == request.auth.uid && log.action == 'borrow')
-            || (resource.data.holder == request.auth.uid && data.holder == null && log.action == 'return'));
-      }
-      allow read: if member();
-      allow create: if admin()
-        && request.resource.data.keys().hasAll(['name', 'location', 'holder', 'updatedAt', 'lastOperation'])
-        && request.resource.data.keys().hasOnly(['name', 'location', 'holder', 'updatedAt', 'lastOperation'])
-        && shortText(request.resource.data.name) && shortText(request.resource.data.location)
-        && request.resource.data.holder == null && request.resource.data.lastOperation == null
-        && request.resource.data.updatedAt == request.time;
-      allow update: if member() && validOperation();
-      allow delete: if false;
+      allow read: if admin();
+      allow write: if false;
     }
     match /equipmentLogs/{id} {
-      function validLog() {
-        let data = request.resource.data;
-        let before = get(/databases/$(database)/documents/equipment/$(data.equipmentId)).data;
-        let after = getAfter(/databases/$(database)/documents/equipment/$(data.equipmentId)).data;
-        return data.keys().hasAll(['equipmentId', 'equipment', 'userId', 'student', 'action', 'createdAt'])
-          && data.keys().hasOnly(['equipmentId', 'equipment', 'userId', 'student', 'action', 'createdAt'])
-          && data.userId == request.auth.uid
-          && data.student == get(/databases/$(database)/documents/members/$(request.auth.uid)).data.name
-          && data.equipment == before.name
-          && data.createdAt == request.time && after.updatedAt == request.time
-          && after.lastOperation == id && before.lastOperation != id
-          && ((data.action == 'borrow' && before.holder == null && after.holder == request.auth.uid)
-            || (data.action == 'return' && before.holder == request.auth.uid && after.holder == null));
-      }
       allow read: if admin();
-      allow create: if member() && validLog();
-      allow update, delete: if false;
+      allow write: if false;
     }
     match /{document=**} {
       allow read, write: if false;

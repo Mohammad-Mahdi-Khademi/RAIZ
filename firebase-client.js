@@ -84,6 +84,18 @@ async function request(path, data) {
     });
     return { ok: true };
   }
+  if (path === 'admin/accounts') {
+    const result = await s.getDocs(s.collection(db, 'members'));
+    return result.docs.filter(doc => doc.data().role === 'admin').map(doc => ({id:doc.id,...doc.data()}));
+  }
+  if (path === 'admin/export') {
+    const [members, equipment, logs] = await Promise.all(['members','equipment','equipmentLogs'].map(name => s.getDocs(s.collection(db,name))));
+    return {
+      members: members.docs.map(doc => ({id:doc.id,...doc.data()})),
+      equipment: equipment.docs.map(doc => ({id:doc.id,...doc.data()})),
+      logs: logs.docs.map(doc => ({id:doc.id,...doc.data(),created:doc.data().createdAt.toDate().toISOString()}))
+    };
+  }
   if (path === 'admin/data') {
     const [users, logs] = await Promise.all([
       s.getDocs(s.collection(db, 'members')),
