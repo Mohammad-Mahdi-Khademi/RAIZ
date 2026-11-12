@@ -9,7 +9,7 @@ export async function portalRequest(path,data,method) {
   try { response=await fetch(`${EXAMS_API_URL}/api/portal/${path}`,{method:method||(data===undefined?'GET':'POST'),headers,credentials:'include',...(data===undefined?{}:{body:JSON.stringify(data)})}); }
   catch {throw new Error('network');}
   let result;try{result=await response.json();}catch{throw new Error('serverError');}
-  if(!response.ok)throw new Error(result.error||'serverError');
+  if(!response.ok)throw Object.assign(new Error(result.error||'serverError'),{details:result.details});
   return result;
 }
 
@@ -22,7 +22,12 @@ export function attachPortalAdmin(data,{lang,refresh,translate}) {
   const message=section.querySelector('.message'),body=section.querySelector('#portal-admin-body');
   const run=async(button,action)=>{
     button.disabled=true;message.textContent='';message.classList.remove('error');
-    try{await action();}catch(error){message.textContent=translate(error.message);message.classList.add('error');}finally{button.disabled=false;}
+    try{await action();}catch(error){if(error.message==='migrationField' && error.details){
+      const {collection,row,field}=error.details;
+      const collections={members:t('Members','اعضا'),equipment:t('Equipment','تجهیزات'),logs:t('History','سوابق')};
+      const fields={id:t('document ID','شناسه سند'),name:t('name','نام'),login:t('login','شناسه ورود'),role:t('role','نقش'),active:t('active status','وضعیت فعال بودن'),holder:t('holder','دارنده امانت'),location:t('location','محل نگهداری'),equipmentId:t('equipment ID','شناسه تجهیز'),userId:t('member ID','شناسه عضو'),equipment:t('equipment name','نام تجهیز'),student:t('member name','نام عضو'),action:t('action','عملیات'),created:t('date','تاریخ')};
+      message.textContent=t('Import stopped: ','انتقال متوقف شد: ')+(collections[collection]||'')+t(', record ', '، رکورد ')+row+t(' — missing or invalid field: ',' — فیلد نامعتبر یا خالی: ')+(fields[field]||'')+t('. No records were imported.','. هیچ رکوردی منتقل نشد.');
+    }else message.textContent=translate(error.message);message.classList.add('error');}finally{button.disabled=false;}
   };
   if(!data.initialized) {
     document.querySelectorAll('#member-form input,#member-form select,#member-form button,#equipment-form input,#equipment-form button').forEach(e=>e.disabled=true);
